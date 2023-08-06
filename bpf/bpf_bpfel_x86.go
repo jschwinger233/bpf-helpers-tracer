@@ -65,17 +65,19 @@ type BpfSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type BpfProgramSpecs struct {
-	OnEntry *ebpf.ProgramSpec `ebpf:"on_entry"`
-	OnExit  *ebpf.ProgramSpec `ebpf:"on_exit"`
+	BpfHelper *ebpf.ProgramSpec `ebpf:"bpf_helper"`
+	OnEntry   *ebpf.ProgramSpec `ebpf:"on_entry"`
+	OnExit    *ebpf.ProgramSpec `ebpf:"on_exit"`
 }
 
 // BpfMapSpecs contains maps before they are loaded into the kernel.
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type BpfMapSpecs struct {
-	Events    *ebpf.MapSpec `ebpf:"events"`
-	Skbcaches *ebpf.MapSpec `ebpf:"skbcaches"`
-	Skbmetas  *ebpf.MapSpec `ebpf:"skbmetas"`
+	Events       *ebpf.MapSpec `ebpf:"events"`
+	SkbLocations *ebpf.MapSpec `ebpf:"skb_locations"`
+	Skbcaches    *ebpf.MapSpec `ebpf:"skbcaches"`
+	Skbmetas     *ebpf.MapSpec `ebpf:"skbmetas"`
 }
 
 // BpfObjects contains all objects after they have been loaded into the kernel.
@@ -97,14 +99,16 @@ func (o *BpfObjects) Close() error {
 //
 // It can be passed to LoadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type BpfMaps struct {
-	Events    *ebpf.Map `ebpf:"events"`
-	Skbcaches *ebpf.Map `ebpf:"skbcaches"`
-	Skbmetas  *ebpf.Map `ebpf:"skbmetas"`
+	Events       *ebpf.Map `ebpf:"events"`
+	SkbLocations *ebpf.Map `ebpf:"skb_locations"`
+	Skbcaches    *ebpf.Map `ebpf:"skbcaches"`
+	Skbmetas     *ebpf.Map `ebpf:"skbmetas"`
 }
 
 func (m *BpfMaps) Close() error {
 	return _BpfClose(
 		m.Events,
+		m.SkbLocations,
 		m.Skbcaches,
 		m.Skbmetas,
 	)
@@ -114,12 +118,14 @@ func (m *BpfMaps) Close() error {
 //
 // It can be passed to LoadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type BpfPrograms struct {
-	OnEntry *ebpf.Program `ebpf:"on_entry"`
-	OnExit  *ebpf.Program `ebpf:"on_exit"`
+	BpfHelper *ebpf.Program `ebpf:"bpf_helper"`
+	OnEntry   *ebpf.Program `ebpf:"on_entry"`
+	OnExit    *ebpf.Program `ebpf:"on_exit"`
 }
 
 func (p *BpfPrograms) Close() error {
 	return _BpfClose(
+		p.BpfHelper,
 		p.OnEntry,
 		p.OnExit,
 	)
