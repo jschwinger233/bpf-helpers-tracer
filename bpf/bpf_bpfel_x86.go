@@ -65,9 +65,9 @@ type BpfSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type BpfProgramSpecs struct {
-	BpfHelper *ebpf.ProgramSpec `ebpf:"bpf_helper"`
-	OnEntry   *ebpf.ProgramSpec `ebpf:"on_entry"`
-	OnExit    *ebpf.ProgramSpec `ebpf:"on_exit"`
+	OnBpfHelper *ebpf.ProgramSpec `ebpf:"on_bpf_helper"`
+	OnEntry     *ebpf.ProgramSpec `ebpf:"on_entry"`
+	OnExit      *ebpf.ProgramSpec `ebpf:"on_exit"`
 }
 
 // BpfMapSpecs contains maps before they are loaded into the kernel.
@@ -118,14 +118,14 @@ func (m *BpfMaps) Close() error {
 //
 // It can be passed to LoadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type BpfPrograms struct {
-	BpfHelper *ebpf.Program `ebpf:"bpf_helper"`
-	OnEntry   *ebpf.Program `ebpf:"on_entry"`
-	OnExit    *ebpf.Program `ebpf:"on_exit"`
+	OnBpfHelper *ebpf.Program `ebpf:"on_bpf_helper"`
+	OnEntry     *ebpf.Program `ebpf:"on_entry"`
+	OnExit      *ebpf.Program `ebpf:"on_exit"`
 }
 
 func (p *BpfPrograms) Close() error {
 	return _BpfClose(
-		p.BpfHelper,
+		p.OnBpfHelper,
 		p.OnEntry,
 		p.OnExit,
 	)

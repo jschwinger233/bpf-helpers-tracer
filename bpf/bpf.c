@@ -160,8 +160,8 @@ void read_reg(void *regval, struct pt_regs *ctx, __u8 reg)
 	return;
 }
 
-SEC("kprobe/bpf_helper")
-int bpf_helper(struct pt_regs *ctx)
+SEC("kprobe/on_bpf_helper")
+int on_bpf_helper(struct pt_regs *ctx)
 {
 	struct called c = {};
 	c.pc = ctx->ip;

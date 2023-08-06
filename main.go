@@ -65,6 +65,10 @@ func main() {
 	}
 	defer objs.Close()
 
+	if err = attachBpfHelpers(objs.OnBpfHelper, objs.SkbLocations); err != nil {
+		log.Fatal(err)
+	}
+
 	fentry, err := link.AttachTracing(link.TracingOptions{
 		Program: objs.BpfPrograms.OnEntry,
 	})
