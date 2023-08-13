@@ -18,12 +18,6 @@ type BpfEvent struct {
 	_    [7]byte
 }
 
-type BpfSkbmeta struct {
-	Header [256]uint8
-	Len    uint32
-	Mark   uint32
-}
-
 // LoadBpf returns the embedded CollectionSpec for Bpf.
 func LoadBpf() (*ebpf.CollectionSpec, error) {
 	reader := bytes.NewReader(_BpfBytes)
@@ -65,19 +59,20 @@ type BpfSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type BpfProgramSpecs struct {
-	OnBpfHelper *ebpf.ProgramSpec `ebpf:"on_bpf_helper"`
-	OnEntry     *ebpf.ProgramSpec `ebpf:"on_entry"`
-	OnExit      *ebpf.ProgramSpec `ebpf:"on_exit"`
+	OffTcfClassify *ebpf.ProgramSpec `ebpf:"off_tcf_classify"`
+	OnBpfHelper    *ebpf.ProgramSpec `ebpf:"on_bpf_helper"`
+	OnEntry        *ebpf.ProgramSpec `ebpf:"on_entry"`
+	OnExit         *ebpf.ProgramSpec `ebpf:"on_exit"`
+	OnTcfClassify  *ebpf.ProgramSpec `ebpf:"on_tcf_classify"`
 }
 
 // BpfMapSpecs contains maps before they are loaded into the kernel.
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type BpfMapSpecs struct {
-	Events       *ebpf.MapSpec `ebpf:"events"`
-	SkbLocations *ebpf.MapSpec `ebpf:"skb_locations"`
-	Skbcaches    *ebpf.MapSpec `ebpf:"skbcaches"`
-	Skbmetas     *ebpf.MapSpec `ebpf:"skbmetas"`
+	Bp2skb     *ebpf.MapSpec `ebpf:"bp2skb"`
+	Events     *ebpf.MapSpec `ebpf:"events"`
+	Skbmatched *ebpf.MapSpec `ebpf:"skbmatched"`
 }
 
 // BpfObjects contains all objects after they have been loaded into the kernel.
@@ -99,18 +94,16 @@ func (o *BpfObjects) Close() error {
 //
 // It can be passed to LoadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type BpfMaps struct {
-	Events       *ebpf.Map `ebpf:"events"`
-	SkbLocations *ebpf.Map `ebpf:"skb_locations"`
-	Skbcaches    *ebpf.Map `ebpf:"skbcaches"`
-	Skbmetas     *ebpf.Map `ebpf:"skbmetas"`
+	Bp2skb     *ebpf.Map `ebpf:"bp2skb"`
+	Events     *ebpf.Map `ebpf:"events"`
+	Skbmatched *ebpf.Map `ebpf:"skbmatched"`
 }
 
 func (m *BpfMaps) Close() error {
 	return _BpfClose(
+		m.Bp2skb,
 		m.Events,
-		m.SkbLocations,
-		m.Skbcaches,
-		m.Skbmetas,
+		m.Skbmatched,
 	)
 }
 
@@ -118,16 +111,20 @@ func (m *BpfMaps) Close() error {
 //
 // It can be passed to LoadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type BpfPrograms struct {
-	OnBpfHelper *ebpf.Program `ebpf:"on_bpf_helper"`
-	OnEntry     *ebpf.Program `ebpf:"on_entry"`
-	OnExit      *ebpf.Program `ebpf:"on_exit"`
+	OffTcfClassify *ebpf.Program `ebpf:"off_tcf_classify"`
+	OnBpfHelper    *ebpf.Program `ebpf:"on_bpf_helper"`
+	OnEntry        *ebpf.Program `ebpf:"on_entry"`
+	OnExit         *ebpf.Program `ebpf:"on_exit"`
+	OnTcfClassify  *ebpf.Program `ebpf:"on_tcf_classify"`
 }
 
 func (p *BpfPrograms) Close() error {
 	return _BpfClose(
+		p.OffTcfClassify,
 		p.OnBpfHelper,
 		p.OnEntry,
 		p.OnExit,
+		p.OnTcfClassify,
 	)
 }
 

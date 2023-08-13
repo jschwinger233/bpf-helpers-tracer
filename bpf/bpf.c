@@ -9,10 +9,9 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 
 // force emitting struct into the ELF.
 const struct event *_ __attribute__((unused));
-const struct skbmeta *__ __attribute__((unused));
 
 struct event {
-	__u64 pc; // only used for kprobe
+	__u64 pc; // only used for kprobe events
 	__u8 type; // 0: fentry, 1: fexit; 2: kprobe
 };
 
@@ -21,27 +20,10 @@ struct bpf_map_def SEC("maps") events = {
 	.max_entries = 1<<29,
 };
 
-struct skbcache {
-	bool matched;
-};
-
-struct bpf_map_def SEC("maps") skbcaches = {
+struct bpf_map_def SEC("maps") skbmatched = {
 	.type = BPF_MAP_TYPE_HASH,
 	.key_size = sizeof(__u64),
-	.value_size = sizeof(struct skbcache),
-	.max_entries = 10000,
-};
-
-struct skbmeta {
-	__u8 header[256];
-	__u32 len;
-	__u32 mark;
-};
-
-struct bpf_map_def SEC("maps") skbmetas = {
-	.type = BPF_MAP_TYPE_QUEUE,
-	.key_size = 0,
-	.value_size = sizeof(struct skbmeta),
+	.value_size = sizeof(bool),
 	.max_entries = 10000,
 };
 
@@ -52,34 +34,40 @@ bool pcap_filter(void *data, void* data_end)
 	return data < data_end;
 }
 
-struct called {
-	__u64 pc;
-	__u64 by;
-};
-
-struct skb_location {
-	__u64 off_from_bp;
-	__u8 reg;
-	bool from_stack;
-};
-
-struct bpf_map_def SEC("maps") skb_locations = {
+struct bpf_map_def SEC("maps") bp2skb = {
 	.type = BPF_MAP_TYPE_HASH,
-	.key_size = sizeof(struct called),
-	.value_size = sizeof(struct location),
+	.key_size = sizeof(__u64),
+	.value_size = sizeof(__u64),
 	.max_entries = 10000,
 };
+
+SEC("kprobe/tcf_classify")
+int on_tcf_classify(struct pt_regs *ctx)
+{
+	__u64 bp = ctx->sp - 8;
+	__u64 skb = ctx->di;
+	bpf_printk("k tcf: %llx %llx\n", bp, skb);
+	bpf_map_update_elem(&bp2skb, &bp, &skb, BPF_ANY);
+	return 0;
+}
+
+SEC("kretprobe/tcf_classify")
+int off_tcf_classify(struct pt_regs *ctx)
+{
+	__u64 bp = ctx->sp - 16;
+	bpf_printk("kp tcf: %llx\n", bp);
+	bpf_map_delete_elem(&bp2skb, &bp);
+	return 0;
+}
 
 SEC("fentry/tc")
 int BPF_PROG(on_entry, struct sk_buff *skb)
 {
-	struct skbcache cache = {};
 	__u64 data_end = ((__u64*)(skb->cb))[5];
-	cache.matched = pcap_filter((void *)skb->data, (void *)data_end);
-	if (!cache.matched)
+	bool matched = pcap_filter((void *)skb->data, (void *)data_end);
+	if (!matched)
 		return 0;
-
-	bpf_map_update_elem(&skbcaches, &skb, &cache, BPF_ANY);
+	bpf_map_update_elem(&skbmatched, &skb, &matched, BPF_ANY);
 
 	struct event ev = {};
 	__builtin_memset(&ev, 0, sizeof(ev));
@@ -91,8 +79,8 @@ int BPF_PROG(on_entry, struct sk_buff *skb)
 SEC("fexit/tc")
 int BPF_PROG(on_exit, struct sk_buff *skb, int ret)
 {
-	struct skbcache *cache = bpf_map_lookup_elem(&skbcaches, &skb);
-	if (!cache || !cache->matched)
+	bool *matched = bpf_map_lookup_elem(&skbmatched, &skb);
+	if (!matched || !*matched)
 		return 0;
 
 	struct event ev = {};
@@ -100,84 +88,27 @@ int BPF_PROG(on_exit, struct sk_buff *skb, int ret)
 	ev.type = 1;
 	bpf_ringbuf_output(&events, &ev, sizeof(ev), 0);
 
-	bpf_map_delete_elem(&skbcaches, &skb);
+	bpf_map_delete_elem(&skbmatched, &skb);
 	return 0;
-}
-
-static __always_inline
-void read_reg(void *regval, struct pt_regs *ctx, __u8 reg)
-{
-	switch (reg) {
-	case 0:
-		bpf_probe_read_kernel(regval, sizeof(ctx->ax), (void *)&ctx->ax);
-		break;
-	case 1:
-		bpf_probe_read_kernel(regval, sizeof(ctx->dx), (void *)&ctx->dx);
-		break;
-	case 2:
-		bpf_probe_read_kernel(regval, sizeof(ctx->cx), (void *)&ctx->cx);
-		break;
-	case 3:
-		bpf_probe_read_kernel(regval, sizeof(ctx->bx), (void *)&ctx->bx);
-		break;
-	case 4:
-		bpf_probe_read_kernel(regval, sizeof(ctx->si), (void *)&ctx->si);
-		break;
-	case 5:
-		bpf_probe_read_kernel(regval, sizeof(ctx->di), (void *)&ctx->di);
-		break;
-	case 6:
-		bpf_probe_read_kernel(regval, sizeof(ctx->bp), (void *)&ctx->bp);
-		break;
-	case 7:
-		bpf_probe_read_kernel(regval, sizeof(ctx->sp), (void *)&ctx->sp);
-		break;
-	case 8:
-		bpf_probe_read_kernel(regval, sizeof(ctx->r8), (void *)&ctx->r8);
-		break;
-	case 9:
-		bpf_probe_read_kernel(regval, sizeof(ctx->r9), (void *)&ctx->r9);
-		break;
-	case 10:
-		bpf_probe_read_kernel(regval, sizeof(ctx->r10), (void *)&ctx->r10);
-		break;
-	case 11:
-		bpf_probe_read_kernel(regval, sizeof(ctx->r11), (void *)&ctx->r11);
-		break;
-	case 12:
-		bpf_probe_read_kernel(regval, sizeof(ctx->r12), (void *)&ctx->r12);
-		break;
-	case 13:
-		bpf_probe_read_kernel(regval, sizeof(ctx->r13), (void *)&ctx->r13);
-		break;
-	case 14:
-		bpf_probe_read_kernel(regval, sizeof(ctx->r14), (void *)&ctx->r14);
-		break;
-	case 15:
-		bpf_probe_read_kernel(regval, sizeof(ctx->r15), (void *)&ctx->r15);
-		break;
-	}
-	return;
 }
 
 SEC("kprobe/on_bpf_helper")
 int on_bpf_helper(struct pt_regs *ctx)
 {
-	struct called c = {};
-	c.pc = ctx->ip;
-	bpf_probe_read_kernel(&c.by, sizeof(c.by), (void *)ctx->sp);
-	struct skb_location *loc = bpf_map_lookup_elem(&skb_locations, &c);
-	if (!loc)
+	__u64 lr;
+	bpf_probe_read_kernel(&lr, sizeof(lr), (void *)ctx->sp);
+
+	// TODO: robustify this
+	__u64 bp1, bp2, bp3, tcf_classify_bp;
+	bpf_probe_read_kernel(&bp1, sizeof(bp1), (void *)ctx->bp);
+	bpf_probe_read_kernel(&bp2, sizeof(bp2), (void *)bp1);
+	bpf_probe_read_kernel(&bp3, sizeof(bp3), (void *)bp2);
+	bpf_probe_read_kernel(&tcf_classify_bp, sizeof(tcf_classify_bp), (void *)bp3);
+	__u64 *skb = bpf_map_lookup_elem(&bp2skb, &tcf_classify_bp);
+	if (!skb)
 		return 0;
-
-	struct sk_buff *skb = 0;
-	if (loc->from_stack)
-		bpf_probe_read_kernel(&skb, sizeof(skb), (void *)ctx->bp + loc->off_from_bp);
-	else
-		read_reg(&skb, ctx, loc->reg);
-
-	struct skbcache *cache = bpf_map_lookup_elem(&skbcaches, &skb);
-	if (!cache || !cache->matched)
+	bool *matched = bpf_map_lookup_elem(&skbmatched, skb);
+	if (!matched || !*matched)
 		return 0;
 
 	struct event ev = {};

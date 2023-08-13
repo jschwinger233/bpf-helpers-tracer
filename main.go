@@ -65,9 +65,23 @@ func main() {
 	}
 	defer objs.Close()
 
-	if err = attachBpfHelpers(objs.OnBpfHelper, objs.SkbLocations); err != nil {
+	kp, err := link.Kprobe(os.Args[2], objs.OnBpfHelper, nil)
+	if err != nil {
 		log.Fatal(err)
 	}
+	defer kp.Close()
+
+	kpOnTcf, err := link.Kprobe("tcf_classify", objs.OnTcfClassify, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer kpOnTcf.Close()
+
+	krOnTcf, err := link.Kretprobe("tcf_classify", objs.OffTcfClassify, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer krOnTcf.Close()
 
 	fentry, err := link.AttachTracing(link.TracingOptions{
 		Program: objs.BpfPrograms.OnEntry,
@@ -100,8 +114,8 @@ func main() {
 	}()
 
 	var event bpf.BpfEvent
+	println("tracing")
 	for {
-		println("reading")
 		record, err := rd.Read()
 		if err != nil {
 			if errors.Is(err, ringbuf.ErrClosed) {
@@ -113,19 +127,30 @@ func main() {
 		}
 
 		// Parse the ringbuf event entry into a bpfEvent structure.
-		if err := binary.Read(bytes.NewBuffer(record.RawSample), binary.BigEndian, &event); err != nil {
+		if err := binary.Read(bytes.NewBuffer(record.RawSample), binary.LittleEndian, &event); err != nil {
 			log.Printf("parsing ringbuf event: %s", err)
 			continue
 		}
 
-		log.Printf("%+v\n", event)
+		switch event.Type {
+		case 0:
+			println("entry")
+		case 1:
+			println("exit")
+		case 2:
+			fmt.Printf("%x\n", event.Pc)
+		}
 	}
 
 	<-stopper
 
-	// next steps:
-	// 1. fentry events and parsing
-	// 2. pcap filter
-	// 3. bpf helpers
-	// 4. skb meta
+	/*
+		Next:
+		1. re-structure the golang code (and c code, for robustness)
+		2. attach all functions (by parsing bpf prog opcode)
+		3. output more info: called-by, ts, skb
+		4. output skb brief info (or output entire skb as pcap?)
+		5. pcap-filter
+		6. function arguments
+	*/
 }
