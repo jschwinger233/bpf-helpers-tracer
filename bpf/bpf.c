@@ -46,7 +46,6 @@ int on_tcf_classify(struct pt_regs *ctx)
 {
 	__u64 bp = ctx->sp - 8;
 	__u64 skb = ctx->di;
-	bpf_printk("k tcf: %llx %llx\n", bp, skb);
 	bpf_map_update_elem(&bp2skb, &bp, &skb, BPF_ANY);
 	return 0;
 }
@@ -55,7 +54,6 @@ SEC("kretprobe/tcf_classify")
 int off_tcf_classify(struct pt_regs *ctx)
 {
 	__u64 bp = ctx->sp - 16;
-	bpf_printk("kp tcf: %llx\n", bp);
 	bpf_map_delete_elem(&bp2skb, &bp);
 	return 0;
 }
