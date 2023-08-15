@@ -116,7 +116,8 @@ func (b *Bpf) attachHelpersEntry() (detach func(), err error) {
 	for _, helper := range b.helpers {
 		kp, err := link.Kprobe(helper, b.objs.OnBpfHelper, nil)
 		if err != nil {
-			return nil, err
+			log.Printf("Warn: failed to attach kprobe %s: %+v", helper, err)
+			continue
 		}
 		kps = append(kps, kp)
 	}

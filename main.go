@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -35,6 +36,7 @@ func main() {
 	}
 	defer detach()
 
+	fmt.Printf("Start tracing\n")
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	for event := range b.PollEvents(ctx) {
@@ -43,10 +45,9 @@ func main() {
 
 	/*
 		Next:
-		2. attach all functions (by parsing bpf prog opcode)
 		3. output more info: called-by, ts, skb
-		4. output skb brief info (or output entire skb as pcap?)
 		5. pcap-filter
+		4. output skb brief info (or output entire skb as pcap?)
 		6. function arguments
 	*/
 }

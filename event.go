@@ -14,8 +14,8 @@ func printf(b *bpf.Bpf, event bpf.BpfEvent) {
 	case 1:
 		fmt.Printf("<- %s\n", b.TargetName)
 	case 2:
-		fmt.Printf("-> %s\n", kernel.NearestSymbol(event.Pc))
+		fmt.Printf("-> %s\n", kernel.NearestSymbol(event.Pc).Name)
 	case 4:
-		fmt.Printf("<- %s\n", kernel.NearestSymbol(event.Pc))
+		fmt.Printf("<- %s\n", kernel.NearestSymbol(event.Pc).Name)
 	}
 }
