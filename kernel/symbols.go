@@ -1,8 +1,11 @@
 package kernel
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
@@ -51,4 +54,23 @@ func NearestSymbol(addr uint64) Symbol {
 
 func Kaddr(sym string) uint64 {
 	return kallsymsByName[sym].Addr
+}
+
+func BpfProgSymbol(ID int) (name string, err error) {
+	data, err := exec.Command("bpftool", "-j", "p", "s", "i", strconv.Itoa(ID)).Output()
+	if err != nil {
+		return
+	}
+
+	prog := Prog{}
+	if err = json.Unmarshal(data, &prog); err != nil {
+		return
+	}
+
+	for _, ksym := range kallsyms {
+		if strings.Contains(ksym.Name, prog.Tag) {
+			return ksym.Name, nil
+		}
+	}
+	return "", fmt.Errorf("Symbol not found for prog %d", ID)
 }

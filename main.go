@@ -10,6 +10,7 @@ import (
 
 	"github.com/cilium/ebpf/rlimit"
 	"github.com/jschwinger233/bpf-helpers-tracer/bpf"
+	"github.com/jschwinger233/bpf-helpers-tracer/kernel"
 )
 
 func init() {
@@ -20,12 +21,15 @@ func init() {
 }
 
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
 	targetID, err := strconv.Atoi(os.Args[1])
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	b, err := bpf.New(targetID)
+	b, err := bpf.New(ctx, targetID)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -37,10 +41,12 @@ func main() {
 	defer detach()
 
 	fmt.Printf("Start tracing\n")
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
+	targetSymbol, err := kernel.BpfProgSymbol(targetID)
+	if err != nil {
+		log.Fatal(err)
+	}
 	for event := range b.PollEvents(ctx) {
-		printf(b, event)
+		printf(targetSymbol, event)
 	}
 
 	/*

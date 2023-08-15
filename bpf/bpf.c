@@ -11,7 +11,10 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 const struct event *_ __attribute__((unused));
 
 struct event {
+	__u64 ts;
+	__u64 skb;
 	__u64 pc; // only used for kprobe events
+	__u64 by; // only used for kprobe events
 	__u8 type; // 0: fentry, 1: fexit; 2: kprobe
 };
 
@@ -65,12 +68,15 @@ int BPF_PROG(on_entry, struct sk_buff *skb)
 	bool matched = pcap_filter((void *)skb->data, (void *)data_end);
 	if (!matched)
 		return 0;
-	bpf_map_update_elem(&skbmatched, &skb, &matched, BPF_ANY);
 
 	struct event ev = {};
 	__builtin_memset(&ev, 0, sizeof(ev));
+	ev.ts = bpf_ktime_get_ns();
+	ev.skb = (__u64)skb;
 	ev.type = 0;
 	bpf_ringbuf_output(&events, &ev, sizeof(ev), 0);
+
+	bpf_map_update_elem(&skbmatched, &skb, &matched, BPF_ANY);
 	return 0;
 }
 
@@ -83,6 +89,8 @@ int BPF_PROG(on_exit, struct sk_buff *skb, int ret)
 
 	struct event ev = {};
 	__builtin_memset(&ev, 0, sizeof(ev));
+	ev.ts = bpf_ktime_get_ns();
+	ev.skb = (__u64)skb;
 	ev.type = 1;
 	bpf_ringbuf_output(&events, &ev, sizeof(ev), 0);
 
@@ -93,10 +101,6 @@ int BPF_PROG(on_exit, struct sk_buff *skb, int ret)
 SEC("kprobe/on_bpf_helper")
 int on_bpf_helper(struct pt_regs *ctx)
 {
-	__u64 lr;
-	bpf_probe_read_kernel(&lr, sizeof(lr), (void *)ctx->sp);
-
-	// TODO: robustify this
 	__u64 bp1, bp2, bp3, tcf_classify_bp;
 	bpf_probe_read_kernel(&bp1, sizeof(bp1), (void *)ctx->bp);
 	bpf_probe_read_kernel(&bp2, sizeof(bp2), (void *)bp1);
@@ -111,8 +115,11 @@ int on_bpf_helper(struct pt_regs *ctx)
 
 	struct event ev = {};
 	__builtin_memset(&ev, 0, sizeof(ev));
+	ev.ts = bpf_ktime_get_ns();
+	ev.skb = *skb;
 	ev.type = 2;
 	ev.pc = ctx->ip;
+	bpf_probe_read_kernel(&ev.by, sizeof(ev.by), (void *)ctx->sp);
 	bpf_ringbuf_output(&events, &ev, sizeof(ev), 0);
 	return 0;
 }

@@ -13,7 +13,10 @@ import (
 )
 
 type BpfEvent struct {
+	Ts   uint64
+	Skb  uint64
 	Pc   uint64
+	By   uint64
 	Type uint8
 	_    [7]byte
 }

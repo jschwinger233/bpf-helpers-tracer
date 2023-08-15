@@ -22,11 +22,11 @@ type Bpf struct {
 	TargetName string
 }
 
-func New(progID int) (b *Bpf, err error) {
+func New(ctx context.Context, progID int) (b *Bpf, err error) {
 	b = &Bpf{
 		objs: &BpfObjects{},
 	}
-	if b.helpers, err = kernel.GetHelpersFromBpfPrograms(); err != nil {
+	if b.helpers, err = kernel.GetHelpersFromBpfPrograms(ctx); err != nil {
 		return nil, err
 	}
 	if b.spec, err = LoadBpf(); err != nil {
