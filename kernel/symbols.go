@@ -22,6 +22,10 @@ var kallsyms []Symbol
 var kallsymsByName map[string]Symbol = make(map[string]Symbol)
 
 func init() {
+	readKallsyms()
+}
+
+func readKallsyms() {
 	data, err := os.ReadFile("/proc/kallsyms")
 	if err != nil {
 		log.Fatal(err)
@@ -42,6 +46,10 @@ func init() {
 	sort.Slice(kallsyms, func(i, j int) bool {
 		return kallsyms[i].Addr < kallsyms[j].Addr
 	})
+}
+
+func RefreshKallsyms() {
+	readKallsyms()
 }
 
 func NearestSymbol(addr uint64) Symbol {

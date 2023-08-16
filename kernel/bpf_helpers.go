@@ -41,7 +41,7 @@ func GetHelpersFromBpfPrograms(ctx context.Context) (helpers []string, err error
 
 	mux := &sync.Mutex{}
 	called := map[string]interface{}{}
-	sem := semaphore.NewWeighted(10)
+	sem := semaphore.NewWeighted(16)
 	for _, prog := range progs {
 		if prog.Type != "sched_cls" {
 			continue
@@ -89,7 +89,7 @@ func GetHelpersFromBpfPrograms(ctx context.Context) (helpers []string, err error
 		}(prog)
 	}
 
-	sem.Acquire(ctx, 10)
+	sem.Acquire(ctx, 16)
 
 	for funcname := range called {
 		helpers = append(helpers, funcname)

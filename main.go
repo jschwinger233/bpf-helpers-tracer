@@ -55,6 +55,8 @@ func main() {
 	}
 	defer detach()
 
+	kernel.RefreshKallsyms()
+
 	fmt.Printf("Start tracing\n")
 	for event := range b.PollEvents(ctx) {
 		printf(targetSymbol, event)
