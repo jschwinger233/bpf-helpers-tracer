@@ -13,13 +13,18 @@ import (
 	"github.com/jschwinger233/bpf-helpers-tracer/kernel"
 )
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -no-strip -target native -type event Bpf ./bpf.c -- -I./headers -I. -Wall
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -no-strip -target native -type event -type datum Bpf ./bpf.c -- -I./headers -I. -Wall
 type Bpf struct {
 	spec *ebpf.CollectionSpec
 	objs *BpfObjects
 
 	helpers    []string
 	TargetName string
+}
+
+type Event struct {
+	BpfEvent
+	BpfDatum
 }
 
 func New(ctx context.Context, progID int) (b *Bpf, err error) {
@@ -160,40 +165,64 @@ func (b *Bpf) attachFamousCallerExit() (detach func(), err error) {
 	return func() { krp.Close() }, err
 }
 
-func (b *Bpf) PollEvents(ctx context.Context) <-chan BpfEvent {
-	ch := make(chan BpfEvent)
+func (b *Bpf) PollEvents(ctx context.Context) <-chan Event {
+	ch := make(chan Event)
 
 	go func() {
 		defer close(ch)
 
-		rd, err := ringbuf.NewReader(b.objs.Events)
+		eventReader, err := ringbuf.NewReader(b.objs.Events)
 		if err != nil {
 			log.Printf("Failed to open ringbuf: %+v", err)
 		}
-		defer rd.Close()
+		defer eventReader.Close()
+
+		dataReader, err := ringbuf.NewReader(b.objs.Data)
+		if err != nil {
+			log.Printf("Failed to open ringbuf: %+v", err)
+		}
+		defer dataReader.Close()
 
 		go func() {
 			<-ctx.Done()
-			if err := rd.Close(); err != nil {
-				log.Printf("Failed to close ringbuf: %+v", err)
-			}
+			eventReader.Close()
+			dataReader.Close()
 		}()
 
 		for {
-			record, err := rd.Read()
+			var event Event
+			record, err := eventReader.Read()
 			if err != nil {
 				if errors.Is(err, ringbuf.ErrClosed) {
-					log.Println("received signal, exiting..")
 					return
 				}
 				log.Printf("Failed to read ringbuf: %+v", err)
 				continue
 			}
 
-			var event BpfEvent
-			if err := binary.Read(bytes.NewBuffer(record.RawSample), binary.LittleEndian, &event); err != nil {
+			if err := binary.Read(bytes.NewBuffer(record.RawSample), binary.LittleEndian, &event.BpfEvent); err != nil {
 				log.Printf("Failed to parse ringbuf event: %+v", err)
 				continue
+			}
+
+			switch event.Type {
+			case 0, 1:
+				if record, err = dataReader.Read(); err != nil {
+					if errors.Is(err, ringbuf.ErrClosed) {
+						return
+					}
+					log.Printf("Failed to read ringbuf: %+v", err)
+					continue
+				}
+
+				if err := binary.Read(bytes.NewBuffer(record.RawSample), binary.LittleEndian, &event.BpfDatum); err != nil {
+					log.Printf("Failed to parse ringbuf data: %+v", err)
+
+				}
+
+				if event.BpfEvent.Skb != event.BpfDatum.Skb {
+					log.Printf("Failed to match skb pointers: %x != %x", event.BpfEvent.Skb, event.BpfDatum.Skb)
+				}
 			}
 
 			ch <- event

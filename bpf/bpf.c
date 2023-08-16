@@ -9,6 +9,7 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 
 // force emitting struct into the ELF.
 const struct event *_ __attribute__((unused));
+const struct datum *__ __attribute__((unused));
 
 struct event {
 	__u64 ts;
@@ -18,7 +19,18 @@ struct event {
 	__u8 type; // 0: fentry, 1: fexit; 2: kprobe
 };
 
+struct datum {
+	__u64 skb;
+	__u32 mark;
+	__u8 payload[256]; // let's hope this is enough
+};
+
 struct bpf_map_def SEC("maps") events = {
+	.type = BPF_MAP_TYPE_RINGBUF,
+	.max_entries = 1<<29,
+};
+
+struct bpf_map_def SEC("maps") data = {
 	.type = BPF_MAP_TYPE_RINGBUF,
 	.max_entries = 1<<29,
 };
@@ -77,6 +89,13 @@ int BPF_PROG(on_entry, struct sk_buff *skb)
 	ev.type = 0;
 	bpf_ringbuf_output(&events, &ev, sizeof(ev), 0);
 
+	struct datum dat = {};
+	__builtin_memset(&dat, 0, sizeof(dat));
+	dat.skb = (__u64)skb;
+	dat.mark = skb->mark;
+	bpf_probe_read_kernel(&dat.payload, sizeof(dat.payload), (void *)skb->data);
+	bpf_ringbuf_output(&data, &dat, sizeof(dat), 0);
+
 	bpf_map_update_elem(&skbmatched, &skb, &matched, BPF_ANY);
 	return 0;
 }
@@ -94,6 +113,15 @@ int BPF_PROG(on_exit, struct sk_buff *skb, int ret)
 	ev.skb = (__u64)skb;
 	ev.type = 1;
 	bpf_ringbuf_output(&events, &ev, sizeof(ev), 0);
+
+	struct datum dat = {};
+	__builtin_memset(&dat, 0, sizeof(dat));
+	dat.skb = (__u64)skb;
+	bpf_probe_read_kernel(&dat.mark, sizeof(dat.mark), (void *)&skb->mark);
+	__u64 skb_data;
+	bpf_probe_read_kernel(&skb_data, sizeof(skb_data), (void *)&skb->data);
+	bpf_probe_read_kernel(&dat.payload, sizeof(dat.payload), (void *)skb_data);
+	bpf_ringbuf_output(&data, &dat, sizeof(dat), 0);
 
 	bpf_map_delete_elem(&skbmatched, &skb);
 	return 0;
