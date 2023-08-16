@@ -35,6 +35,10 @@ func New(ctx context.Context, progID int) (b *Bpf, err error) {
 	return b, nil
 }
 
+func (b *Bpf) InjectPcapFilter(filter string) (err error) {
+	return InjectPcapFilter(b.spec.Programs["on_entry"], filter)
+}
+
 func (b *Bpf) Attach(targetID int) (_ func(), err error) {
 	if b.TargetName, err = b.adjustSpec(targetID); err != nil {
 		return

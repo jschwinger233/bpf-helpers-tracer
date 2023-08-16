@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 
 	"golang.org/x/sync/semaphore"
 )
@@ -38,6 +39,7 @@ func GetHelpersFromBpfPrograms(ctx context.Context) (helpers []string, err error
 		return
 	}
 
+	mux := &sync.Mutex{}
 	called := map[string]interface{}{}
 	sem := semaphore.NewWeighted(10)
 	for _, prog := range progs {
@@ -79,7 +81,9 @@ func GetHelpersFromBpfPrograms(ctx context.Context) (helpers []string, err error
 					if targetAddr < p+5+base {
 						targetAddr -= 1 << 32
 					}
+					mux.Lock()
 					called[NearestSymbol(targetAddr).Name] = nil
+					mux.Unlock()
 				}
 			}
 		}(prog)

@@ -34,7 +34,7 @@ static __always_inline
 bool pcap_filter(void *data, void* data_end)
 {
 	bpf_printk("%p %p\n", data, data_end);
-	return data < data_end;
+	return data != data_end;
 }
 
 struct bpf_map_def SEC("maps") bp2skb = {
@@ -64,13 +64,14 @@ int off_tcf_classify(struct pt_regs *ctx)
 SEC("fentry/tc")
 int BPF_PROG(on_entry, struct sk_buff *skb)
 {
+	struct event ev = {};
+	__builtin_memset(&ev, 0, sizeof(ev));
+
 	__u64 data_end = ((__u64*)(skb->cb))[5];
 	bool matched = pcap_filter((void *)skb->data, (void *)data_end);
 	if (!matched)
 		return 0;
 
-	struct event ev = {};
-	__builtin_memset(&ev, 0, sizeof(ev));
 	ev.ts = bpf_ktime_get_ns();
 	ev.skb = (__u64)skb;
 	ev.type = 0;
