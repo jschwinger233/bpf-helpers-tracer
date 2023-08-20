@@ -37,7 +37,7 @@ func printf(targetSymbol string, event bpf.Event) {
 		by := kernel.NearestSymbol(event.By)
 		fmt.Printf("%x %s %s()\n",
 			event.BpfEvent.Skb,
-			fmt.Sprintf("%s+%d", by.Name, event.By-by.Addr),
+			fmt.Sprintf("%s+%x", by.Name, event.By-by.Addr),
 			kernel.NearestSymbol(event.Pc).Name)
 	}
 }

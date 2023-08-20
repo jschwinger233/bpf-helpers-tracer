@@ -94,9 +94,9 @@ func adjustEbpf(insts asm.Instructions, opts cbpfc.EBPFOpts) (newInsts asm.Instr
 			)
 
 			restoreInsts := asm.Instructions{
-				asm.LoadMem(asm.R1, asm.RFP, -16, asm.DWord),
-				asm.LoadMem(asm.R2, asm.RFP, -24, asm.DWord),
-				asm.LoadMem(asm.R3, asm.RFP, -32, asm.DWord),
+				asm.LoadMem(asm.R1, asm.RFP, -32, asm.DWord),
+				asm.LoadMem(asm.R2, asm.RFP, -40, asm.DWord),
+				asm.LoadMem(asm.R3, asm.RFP, -48, asm.DWord),
 			}
 			switch inst.Dst {
 			case asm.R1, asm.R2, asm.R3:

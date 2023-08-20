@@ -64,10 +64,7 @@ func main() {
 
 	/*
 		Next:
-		5. pcap-filter code cleanup
-		4. output skb brief info (only for fentry/fexit, higtlight diff)
+		5. source code by offset
 		6. function arguments (not that hard)
-
-		7. why some functions are traced even before fentry?
 	*/
 }
