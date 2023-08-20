@@ -35,10 +35,12 @@ func printf(targetSymbol string, event bpf.Event) {
 		fmt.Printf("%x %s+r (Mark=%x | %s)\n", event.BpfEvent.Skb, targetSymbol, event.Mark, sprintfPacket(event.Payload[:]))
 	case 2: // kprobe
 		by := kernel.NearestSymbol(event.By)
-		fmt.Printf("%x %s %s()\n",
+		fmt.Printf("%x %s %s() // %s\n",
 			event.BpfEvent.Skb,
 			fmt.Sprintf("%s+%x", by.Name, event.By-by.Addr),
-			kernel.NearestSymbol(event.Pc).Name)
+			kernel.NearestSymbol(event.Pc).Name,
+			kernel.BpfSrc(by.Name, event.By-by.Addr),
+		)
 	}
 }
 
@@ -57,7 +59,7 @@ func sprintfPacket(p []byte) string {
 		}
 
 		if idx+1 < layerNum {
-			buf = fmt.Appendf(buf, " | ")
+			buf = fmt.Appendf(buf, " ")
 		}
 	}
 
@@ -137,7 +139,7 @@ func stringifyTCP(data []byte) string {
 	if data[13]&0b00000001 != 0 {
 		flags = append(flags, "F")
 	}
-	return fmt.Sprintf("%d>%d [%s]", sport, dport, strings.Join(flags, ""))
+	return fmt.Sprintf("%d>%d[%s]", sport, dport, strings.Join(flags, ""))
 }
 
 func stringifyPayload(data []byte) string {

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"golang.org/x/exp/slices"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -22,12 +23,20 @@ type Ins struct {
 	Pc        string   `json:"pc"`
 	Operation string   `json:"operation"`
 	Opcodes   []string `json:"opcodes"`
+	Src       string   `json:"src"`
 }
 
 type ProgDetail struct {
 	Name  string `json:"name"`
 	Insns []Ins  `json:"insns"`
 }
+
+type BpfSource struct {
+	Pc  uint64
+	Src string
+}
+
+var bpfSources = map[string][]BpfSource{}
 
 func GetHelpersFromBpfPrograms(ctx context.Context) (helpers []string, err error) {
 	data, err := exec.Command("bpftool", "-j", "p", "l").Output()
@@ -85,6 +94,18 @@ func GetHelpersFromBpfPrograms(ctx context.Context) (helpers []string, err error
 					called[NearestSymbol(targetAddr).Name] = nil
 					mux.Unlock()
 				}
+
+				if ins.Src != "" {
+					pc := strings.TrimPrefix(ins.Pc, "0x")
+					p, err := strconv.ParseUint(pc, 16, 64)
+					if err != nil {
+						log.Println(err)
+					}
+					bpfSources[pd[0].Name] = append(bpfSources[pd[0].Name], BpfSource{
+						Pc:  p,
+						Src: ins.Src,
+					})
+				}
 			}
 		}(prog)
 	}
@@ -95,4 +116,13 @@ func GetHelpersFromBpfPrograms(ctx context.Context) (helpers []string, err error
 		helpers = append(helpers, funcname)
 	}
 	return
+}
+
+func BpfSrc(prog string, pc uint64) string {
+	sources, ok := bpfSources[prog]
+	if !ok {
+		return ""
+	}
+	idx, _ := slices.BinarySearchFunc(sources, pc, func(x BpfSource, pc uint64) int { return int(x.Pc - pc) })
+	return sources[idx-1].Src
 }
