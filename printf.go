@@ -43,6 +43,8 @@ func printf(targetSymbol string, event bpf.Event) {
 			kernel.BTFFormat(fname, event.Arg),
 			kernel.BpfSrc(by.Name, event.By-by.Addr),
 		)
+	case 3: // kretprobe
+		fmt.Printf("kr: =%x\n", event.Arg[0])
 	}
 }
 

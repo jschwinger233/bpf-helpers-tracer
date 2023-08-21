@@ -142,7 +142,22 @@ func (b *Bpf) attachHelpersEntry() (detach func(), err error) {
 }
 
 func (b *Bpf) attachHelpersExit() (detach func(), err error) {
+	// disable kretprobe for now
 	return func() {}, nil
+	krps := []link.Link{}
+	for _, helper := range b.helpers {
+		krp, err := link.Kretprobe(helper, b.objs.OffBpfHelper, nil)
+		if err != nil {
+			log.Printf("Warn: failed to attach kprobe %s: %+v", helper, err)
+			continue
+		}
+		krps = append(krps, krp)
+	}
+	return func() {
+		for _, krp := range krps {
+			krp.Close()
+		}
+	}, nil
 }
 
 func (b *Bpf) attachTargetEntry() (detach func(), err error) {
@@ -238,7 +253,7 @@ func (b *Bpf) PollEvents(ctx context.Context) <-chan Event {
 				}
 
 			// get bpf-helpers' arguments for kprobes
-			case 2:
+			case 2, 3:
 				if record, err = argsReader.Read(); err != nil {
 					if errors.Is(err, ringbuf.ErrClosed) {
 						return
@@ -249,6 +264,10 @@ func (b *Bpf) PollEvents(ctx context.Context) <-chan Event {
 
 				if err = binary.Read(bytes.NewBuffer(record.RawSample), binary.LittleEndian, &event.BpfArgs); err != nil {
 					log.Printf("Failed to parse ringbuf args: %+v", err)
+				}
+
+				if event.BpfEvent.Skb != event.BpfArgs.Skb {
+					log.Printf("Failed to match skb pointers: %x != %x", event.BpfEvent.Skb, event.BpfArgs.Skb)
 				}
 			}
 

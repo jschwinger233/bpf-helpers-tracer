@@ -12,7 +12,10 @@ import (
 	"github.com/cilium/ebpf"
 )
 
-type BpfArgs struct{ Arg [6]uint64 }
+type BpfArgs struct {
+	Skb uint64
+	Arg [6]uint64
+}
 
 type BpfDatum struct {
 	Skb     uint64
@@ -71,6 +74,7 @@ type BpfSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type BpfProgramSpecs struct {
+	OffBpfHelper   *ebpf.ProgramSpec `ebpf:"off_bpf_helper"`
 	OffTcfClassify *ebpf.ProgramSpec `ebpf:"off_tcf_classify"`
 	OnBpfHelper    *ebpf.ProgramSpec `ebpf:"on_bpf_helper"`
 	OnEntry        *ebpf.ProgramSpec `ebpf:"on_entry"`
@@ -129,6 +133,7 @@ func (m *BpfMaps) Close() error {
 //
 // It can be passed to LoadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type BpfPrograms struct {
+	OffBpfHelper   *ebpf.Program `ebpf:"off_bpf_helper"`
 	OffTcfClassify *ebpf.Program `ebpf:"off_tcf_classify"`
 	OnBpfHelper    *ebpf.Program `ebpf:"on_bpf_helper"`
 	OnEntry        *ebpf.Program `ebpf:"on_entry"`
@@ -138,6 +143,7 @@ type BpfPrograms struct {
 
 func (p *BpfPrograms) Close() error {
 	return _BpfClose(
+		p.OffBpfHelper,
 		p.OffTcfClassify,
 		p.OnBpfHelper,
 		p.OnEntry,

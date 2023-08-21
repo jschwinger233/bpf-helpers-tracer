@@ -17,7 +17,7 @@ struct event {
 	__u64 skb;
 	__u64 pc; // only used for kprobe events
 	__u64 by; // only used for kprobe events
-	__u8 type; // 0: fentry, 1: fexit; 2: kprobe
+	__u8 type; // 0: fentry, 1: fexit; 2: kprobe; 3: kretprobe
 };
 
 struct datum {
@@ -44,6 +44,7 @@ struct bpf_map_def SEC("maps") skbmatched = {
 };
 
 struct args {
+	__u64 skb;
 	__u64 arg[6];
 };
 
@@ -192,6 +193,7 @@ int on_bpf_helper(struct pt_regs *ctx)
 
 	struct args a = {};
 	__builtin_memset(&a, 0, sizeof(a));
+	a.skb = *skb;
 	for (int i=0; i<6; i++) {
 		read_reg(ctx, i, &a.arg[i]);
 	}
@@ -199,6 +201,36 @@ int on_bpf_helper(struct pt_regs *ctx)
 	return 0;
 }
 
+SEC("kretprobe/off_bpf_helper")
+int off_bpf_helper(struct pt_regs *ctx)
+{
+	__u64 bp1, bp2, bp3, tcf_classify_bp;
+	bpf_probe_read_kernel(&bp1, sizeof(bp1), (void *)ctx->bp);
+	bpf_probe_read_kernel(&bp2, sizeof(bp2), (void *)bp1);
+	bpf_probe_read_kernel(&bp3, sizeof(bp3), (void *)bp2);
+	bpf_probe_read_kernel(&tcf_classify_bp, sizeof(tcf_classify_bp), (void *)bp3);
+	__u64 *skb = bpf_map_lookup_elem(&bp2skb, &tcf_classify_bp);
+	if (!skb)
+		return 0;
+	bool *matched = bpf_map_lookup_elem(&skbmatched, skb);
+	if (!matched || !*matched)
+		return 0;
+
+	bpf_printk("kr called\n");
+	struct event ev = {};
+	__builtin_memset(&ev, 0, sizeof(ev));
+	ev.ts = bpf_ktime_get_ns();
+	ev.skb = *skb;
+	ev.type = 3;
+	bpf_ringbuf_output(&events, &ev, sizeof(ev), 0);
+
+	struct args a = {};
+	__builtin_memset(&a, 0, sizeof(a));
+	a.skb = *skb;
+	read_reg(ctx, 6, &a.arg[0]);
+	bpf_ringbuf_output(&argsbuf, &a, sizeof(a), 0);
+	return 0;
+}
 
 
 /*

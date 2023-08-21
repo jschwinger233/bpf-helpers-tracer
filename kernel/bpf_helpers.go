@@ -49,6 +49,7 @@ func GetHelpersFromBpfPrograms(ctx context.Context) (helpers []string, err error
 	}
 
 	mux := &sync.Mutex{}
+	mux2 := &sync.Mutex{}
 	called := map[string]interface{}{}
 	sem := semaphore.NewWeighted(16)
 	for _, prog := range progs {
@@ -101,10 +102,12 @@ func GetHelpersFromBpfPrograms(ctx context.Context) (helpers []string, err error
 					if err != nil {
 						log.Println(err)
 					}
+					mux2.Lock()
 					bpfSources[pd[0].Name] = append(bpfSources[pd[0].Name], BpfSource{
 						Pc:  p,
 						Src: ins.Src,
 					})
+					mux2.Unlock()
 				}
 			}
 		}(prog)
