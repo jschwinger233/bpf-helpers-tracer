@@ -12,6 +12,8 @@ import (
 	"github.com/cilium/ebpf"
 )
 
+type BpfArgs struct{ Arg [6]uint64 }
+
 type BpfDatum struct {
 	Skb     uint64
 	Mark    uint32
@@ -80,6 +82,7 @@ type BpfProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type BpfMapSpecs struct {
+	Argsbuf    *ebpf.MapSpec `ebpf:"argsbuf"`
 	Bp2skb     *ebpf.MapSpec `ebpf:"bp2skb"`
 	Data       *ebpf.MapSpec `ebpf:"data"`
 	Events     *ebpf.MapSpec `ebpf:"events"`
@@ -105,6 +108,7 @@ func (o *BpfObjects) Close() error {
 //
 // It can be passed to LoadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type BpfMaps struct {
+	Argsbuf    *ebpf.Map `ebpf:"argsbuf"`
 	Bp2skb     *ebpf.Map `ebpf:"bp2skb"`
 	Data       *ebpf.Map `ebpf:"data"`
 	Events     *ebpf.Map `ebpf:"events"`
@@ -113,6 +117,7 @@ type BpfMaps struct {
 
 func (m *BpfMaps) Close() error {
 	return _BpfClose(
+		m.Argsbuf,
 		m.Bp2skb,
 		m.Data,
 		m.Events,

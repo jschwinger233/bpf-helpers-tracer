@@ -34,11 +34,13 @@ func printf(targetSymbol string, event bpf.Event) {
 	case 1: // fexit
 		fmt.Printf("%x %s+r (Mark=%x | %s)\n", event.BpfEvent.Skb, targetSymbol, event.Mark, sprintfPacket(event.Payload[:]))
 	case 2: // kprobe
+		fname := kernel.NearestSymbol(event.Pc).Name
 		by := kernel.NearestSymbol(event.By)
-		fmt.Printf("%x %s %s() // %s\n",
+		fmt.Printf("%x %s %s(%s) // %s\n",
 			event.BpfEvent.Skb,
 			fmt.Sprintf("%s+%x", by.Name, event.By-by.Addr),
-			kernel.NearestSymbol(event.Pc).Name,
+			fname,
+			kernel.BTFFormat(fname, event.Arg),
 			kernel.BpfSrc(by.Name, event.By-by.Addr),
 		)
 	}

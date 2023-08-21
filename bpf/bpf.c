@@ -10,6 +10,7 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 // force emitting struct into the ELF.
 const struct event *_ __attribute__((unused));
 const struct datum *__ __attribute__((unused));
+const struct args *___ __attribute__((unused));
 
 struct event {
 	__u64 ts;
@@ -42,6 +43,15 @@ struct bpf_map_def SEC("maps") skbmatched = {
 	.max_entries = 10000,
 };
 
+struct args {
+	__u64 arg[6];
+};
+
+struct bpf_map_def SEC("maps") argsbuf = {
+	.type = BPF_MAP_TYPE_RINGBUF,
+	.max_entries = 1<<29,
+};
+
 static __always_inline
 bool pcap_filter(void *data, void* data_end)
 {
@@ -55,6 +65,35 @@ struct bpf_map_def SEC("maps") bp2skb = {
 	.value_size = sizeof(__u64),
 	.max_entries = 10000,
 };
+
+static __always_inline
+void read_reg(struct pt_regs *ctx, __u8 reg, __u64 *regval)
+{
+	switch (reg) {
+	case 0:
+		bpf_probe_read_kernel(regval, sizeof(ctx->di), &ctx->di);
+		break;
+	case 1:
+		bpf_probe_read_kernel(regval, sizeof(ctx->si), &ctx->si);
+		break;
+	case 2:
+		bpf_probe_read_kernel(regval, sizeof(ctx->dx), &ctx->dx);
+		break;
+	case 3:
+		bpf_probe_read_kernel(regval, sizeof(ctx->cx), &ctx->cx);
+		break;
+	case 4:
+		bpf_probe_read_kernel(regval, sizeof(ctx->r8), &ctx->r8);
+		break;
+	case 5:
+		bpf_probe_read_kernel(regval, sizeof(ctx->r9), &ctx->r9);
+		break;
+	case 6:
+		bpf_probe_read_kernel(regval, sizeof(ctx->ax), &ctx->ax);
+		break;
+	}
+	return;
+}
 
 SEC("kprobe/tcf_classify")
 int on_tcf_classify(struct pt_regs *ctx)
@@ -150,5 +189,37 @@ int on_bpf_helper(struct pt_regs *ctx)
 	ev.pc = ctx->ip;
 	bpf_probe_read_kernel(&ev.by, sizeof(ev.by), (void *)ctx->sp);
 	bpf_ringbuf_output(&events, &ev, sizeof(ev), 0);
+
+	struct args a = {};
+	__builtin_memset(&a, 0, sizeof(a));
+	for (int i=0; i<6; i++) {
+		read_reg(ctx, i, &a.arg[i]);
+	}
+	bpf_ringbuf_output(&argsbuf, &a, sizeof(a), 0);
 	return 0;
 }
+
+
+
+/*
+ * 1. no need to support all registers, just 7
+ * 2. no need `type`? if there is offset, do extra bpf_read
+ * 3. length is only required for bpf_read, aka, on stack
+ * 4. multi-layer offset?
+ * 5. after a second thought, just need to distinguish between value and
+ * pointer, and let user specify length! this can minimize the burden of btf
+ * parsing.
+ * 6. then, then only `parameter` info is `pointer` or `value`
+ * 7. then, userspace duty is:
+ *   a. user specify length
+ *   b. parse btf and tell if it is pointer or value, set bpf map correctly
+ *   c. prepare parameters map for printf: pc -> parameter name, value, hex
+ * 8. shouldn't be too hard
+ *
+ * steps:
+ * 1. fetch para from register, parse them in userspace, with btf, show varname
+ * 2. kr
+ * 2. support fetch pointer, deref for once, show hex.
+ * 3. struct cast for pointer content?
+ * 4. user specific length
+ */
