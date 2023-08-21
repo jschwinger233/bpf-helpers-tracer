@@ -36,7 +36,7 @@ func init() {
 
 var fnProtos map[string]*btf.FuncProto
 
-func BTFPrepare(funcnames []string) (err error) {
+func BTFPrepare() (err error) {
 	fnProtos = make(map[string]*btf.FuncProto)
 
 	for _, it := range iters {
@@ -56,7 +56,11 @@ func BTFPrepare(funcnames []string) (err error) {
 	return
 }
 
-func BTFFormat(fname string, args [6]uint64) string {
+func BTFGetFuncProto(fname string) *btf.FuncProto {
+	return fnProtos[fname]
+}
+
+func BTFFormat(fstring [6]string, fname string, args [6]uint64) string {
 	fnProto, ok := fnProtos[fname]
 	if !ok {
 		return ""
@@ -64,7 +68,21 @@ func BTFFormat(fname string, args [6]uint64) string {
 
 	buf := []string{}
 	for idx, param := range fnProto.Params {
-		buf = append(buf, fmt.Sprintf("%s=%d", param.Name, args[idx]))
+		buf = append(buf, fmt.Sprintf("%s="+fstring[idx], param.Name, args[idx]))
 	}
 	return strings.Join(buf, ", ")
+}
+
+func BTFFormatBytes(fname string, idx int, bytes []byte) string {
+	fnProto, ok := fnProtos[fname]
+	if !ok || idx >= len(fnProto.Params) {
+		return ""
+	}
+
+	buf := []string{}
+	buf = append(buf, fmt.Sprintf("%s: ", fnProto.Params[idx].Name))
+	for i := 0; i < len(bytes); i++ {
+		buf = append(buf, fmt.Sprintf("%02x ", bytes[i]))
+	}
+	return strings.Join(buf, "")
 }

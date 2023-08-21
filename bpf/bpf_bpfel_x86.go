@@ -17,6 +17,11 @@ type BpfArgs struct {
 	Arg [6]uint64
 }
 
+type BpfContent struct {
+	Skb   uint64
+	Bytes [64]uint8
+}
+
 type BpfDatum struct {
 	Skb     uint64
 	Mark    uint32
@@ -88,8 +93,10 @@ type BpfProgramSpecs struct {
 type BpfMapSpecs struct {
 	Argsbuf    *ebpf.MapSpec `ebpf:"argsbuf"`
 	Bp2skb     *ebpf.MapSpec `ebpf:"bp2skb"`
+	Contentbuf *ebpf.MapSpec `ebpf:"contentbuf"`
 	Data       *ebpf.MapSpec `ebpf:"data"`
 	Events     *ebpf.MapSpec `ebpf:"events"`
+	Pc2param   *ebpf.MapSpec `ebpf:"pc2param"`
 	Skbmatched *ebpf.MapSpec `ebpf:"skbmatched"`
 }
 
@@ -114,8 +121,10 @@ func (o *BpfObjects) Close() error {
 type BpfMaps struct {
 	Argsbuf    *ebpf.Map `ebpf:"argsbuf"`
 	Bp2skb     *ebpf.Map `ebpf:"bp2skb"`
+	Contentbuf *ebpf.Map `ebpf:"contentbuf"`
 	Data       *ebpf.Map `ebpf:"data"`
 	Events     *ebpf.Map `ebpf:"events"`
+	Pc2param   *ebpf.Map `ebpf:"pc2param"`
 	Skbmatched *ebpf.Map `ebpf:"skbmatched"`
 }
 
@@ -123,8 +132,10 @@ func (m *BpfMaps) Close() error {
 	return _BpfClose(
 		m.Argsbuf,
 		m.Bp2skb,
+		m.Contentbuf,
 		m.Data,
 		m.Events,
+		m.Pc2param,
 		m.Skbmatched,
 	)
 }

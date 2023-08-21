@@ -8,17 +8,19 @@ import (
 	"log"
 
 	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/jschwinger233/bpf-helpers-tracer/kernel"
 )
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -no-strip -target native -type event -type datum -type args Bpf ./bpf.c -- -I./headers -I. -Wall
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -no-strip -target native -type event -type datum -type args -type content Bpf ./bpf.c -- -I./headers -I. -Wall
 type Bpf struct {
 	spec *ebpf.CollectionSpec
 	objs *BpfObjects
 
 	helpers    []string
+	params     map[uint64][6]bool
 	TargetName string
 }
 
@@ -26,16 +28,18 @@ type Event struct {
 	BpfEvent
 	BpfDatum
 	BpfArgs
+	Contents [6]BpfContent
 }
 
 func New(ctx context.Context, progID int) (b *Bpf, err error) {
 	b = &Bpf{
-		objs: &BpfObjects{},
+		objs:   &BpfObjects{},
+		params: make(map[uint64][6]bool),
 	}
 	if b.helpers, err = kernel.GetHelpersFromBpfPrograms(ctx); err != nil {
 		return
 	}
-	if err = kernel.BTFPrepare(b.helpers); err != nil {
+	if err = kernel.BTFPrepare(); err != nil {
 		return
 	}
 	if b.spec, err = LoadBpf(); err != nil {
@@ -46,6 +50,28 @@ func New(ctx context.Context, progID int) (b *Bpf, err error) {
 
 func (b *Bpf) InjectPcapFilter(filter string) (err error) {
 	return InjectPcapFilter(b.spec.Programs["on_entry"], filter)
+}
+
+func (b *Bpf) setMapsKV() (err error) {
+	for _, helper := range b.helpers {
+		proto := kernel.BTFGetFuncProto(helper)
+		if proto == nil {
+			continue
+		}
+		isPtr := [6]bool{}
+		for idx, param := range proto.Params {
+			switch param.Name {
+			case "skb", "map", "key", "value":
+				isPtr[idx] = true
+			default:
+				_, isPtr[idx] = param.Type.(*btf.Pointer)
+			}
+		}
+		pc := kernel.Kaddr(helper)
+		b.objs.Pc2param.Update(pc+1, isPtr, ebpf.UpdateNoExist)
+		b.params[pc+1] = isPtr
+	}
+	return
 }
 
 func (b *Bpf) Attach(targetID int) (_ func(), err error) {
@@ -59,6 +85,10 @@ func (b *Bpf) Attach(targetID int) (_ func(), err error) {
 			return nil, ve
 		}
 		return nil, err
+	}
+
+	if err = b.setMapsKV(); err != nil {
+		return
 	}
 
 	detach, err := b.attach()
@@ -208,11 +238,18 @@ func (b *Bpf) PollEvents(ctx context.Context) <-chan Event {
 		}
 		defer argsReader.Close()
 
+		contentReader, err := ringbuf.NewReader(b.objs.Contentbuf)
+		if err != nil {
+			log.Printf("Failed to open ringbuf: %+v", err)
+		}
+		defer contentReader.Close()
+
 		go func() {
 			<-ctx.Done()
 			eventReader.Close()
 			dataReader.Close()
 			argsReader.Close()
+			contentReader.Close()
 		}()
 
 		for {
@@ -252,7 +289,7 @@ func (b *Bpf) PollEvents(ctx context.Context) <-chan Event {
 					log.Printf("Failed to match skb pointers: %x != %x", event.BpfEvent.Skb, event.BpfDatum.Skb)
 				}
 
-			// get bpf-helpers' arguments for kprobes
+				// get bpf-helpers' arguments for kprobes
 			case 2, 3:
 				if record, err = argsReader.Read(); err != nil {
 					if errors.Is(err, ringbuf.ErrClosed) {
@@ -268,6 +305,28 @@ func (b *Bpf) PollEvents(ctx context.Context) <-chan Event {
 
 				if event.BpfEvent.Skb != event.BpfArgs.Skb {
 					log.Printf("Failed to match skb pointers: %x != %x", event.BpfEvent.Skb, event.BpfArgs.Skb)
+				}
+
+				// get pointer content
+				for idx, isPtr := range b.params[event.Pc] {
+					if !isPtr {
+						continue
+					}
+					if record, err = contentReader.Read(); err != nil {
+						if errors.Is(err, ringbuf.ErrClosed) {
+							return
+						}
+						log.Printf("Failed to read ringbuf: %+v", err)
+						continue
+					}
+
+					if err = binary.Read(bytes.NewBuffer(record.RawSample), binary.LittleEndian, &event.Contents[idx]); err != nil {
+						log.Printf("Failed to parse ringbuf args: %+v", err)
+					}
+
+					if event.BpfEvent.Skb != event.Contents[idx].Skb {
+						log.Printf("Failed to match skb pointers: %x != %x", event.BpfEvent.Skb, event.BpfArgs.Skb)
+					}
 				}
 			}
 

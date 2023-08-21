@@ -7,6 +7,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/cilium/ebpf/btf"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/jschwinger233/bpf-helpers-tracer/bpf"
@@ -36,13 +37,39 @@ func printf(targetSymbol string, event bpf.Event) {
 	case 2: // kprobe
 		fname := kernel.NearestSymbol(event.Pc).Name
 		by := kernel.NearestSymbol(event.By)
+		fstring := [6]string{}
+		proto := kernel.BTFGetFuncProto(fname)
+		ptr := [6]bool{}
+		if proto != nil {
+			for idx, param := range proto.Params {
+				fstring[idx] = "%d"
+				switch param.Name {
+				case "skb", "map", "key", "value":
+					fstring[idx] = "0x%x"
+					ptr[idx] = true
+				default:
+					if _, ok := param.Type.(*btf.Pointer); ok {
+						fstring[idx] = "0x%x"
+						ptr[idx] = true
+					}
+				}
+			}
+		}
 		fmt.Printf("%x %s %s(%s) // %s\n",
 			event.BpfEvent.Skb,
 			fmt.Sprintf("%s+%x", by.Name, event.By-by.Addr),
 			fname,
-			kernel.BTFFormat(fname, event.Arg),
+			kernel.BTFFormat(fstring, fname, event.Arg),
 			kernel.BpfSrc(by.Name, event.By-by.Addr),
 		)
+		for idx, content := range event.Contents {
+			if ptr[idx] {
+				out := kernel.BTFFormatBytes(fname, idx, content.Bytes[:])
+				if out != "" {
+					fmt.Printf("%s\n", out)
+				}
+			}
+		}
 	case 3: // kretprobe
 		fmt.Printf("kr: =%x\n", event.Arg[0])
 	}

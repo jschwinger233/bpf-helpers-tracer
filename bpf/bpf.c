@@ -11,6 +11,7 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 const struct event *_ __attribute__((unused));
 const struct datum *__ __attribute__((unused));
 const struct args *___ __attribute__((unused));
+const struct content *____ __attribute__((unused));
 
 struct event {
 	__u64 ts;
@@ -53,19 +54,40 @@ struct bpf_map_def SEC("maps") argsbuf = {
 	.max_entries = 1<<29,
 };
 
-static __always_inline
-bool pcap_filter(void *data, void* data_end)
-{
-	bpf_printk("%p %p\n", data, data_end);
-	return data != data_end;
-}
-
 struct bpf_map_def SEC("maps") bp2skb = {
 	.type = BPF_MAP_TYPE_HASH,
 	.key_size = sizeof(__u64),
 	.value_size = sizeof(__u64),
 	.max_entries = 10000,
 };
+
+struct parameter {
+	bool is_pointer[6];
+};
+
+struct bpf_map_def SEC("maps") pc2param = {
+	.type = BPF_MAP_TYPE_HASH,
+	.key_size = sizeof(__u64),
+	.value_size = sizeof(struct parameter),
+	.max_entries = 10000,
+};
+
+struct content {
+	__u64 skb;
+	__u8 bytes[64];
+};
+
+struct bpf_map_def SEC("maps") contentbuf = {
+	.type = BPF_MAP_TYPE_RINGBUF,
+	.max_entries = 1<<29,
+};
+
+static __always_inline
+bool pcap_filter(void *data, void* data_end)
+{
+	bpf_printk("%p %p\n", data, data_end);
+	return data != data_end;
+}
 
 static __always_inline
 void read_reg(struct pt_regs *ctx, __u8 reg, __u64 *regval)
@@ -191,11 +213,20 @@ int on_bpf_helper(struct pt_regs *ctx)
 	bpf_probe_read_kernel(&ev.by, sizeof(ev.by), (void *)ctx->sp);
 	bpf_ringbuf_output(&events, &ev, sizeof(ev), 0);
 
+
 	struct args a = {};
 	__builtin_memset(&a, 0, sizeof(a));
 	a.skb = *skb;
+
+	struct parameter *param = bpf_map_lookup_elem(&pc2param, &ev.pc);
+	struct content cont = {};
+	cont.skb = *skb;
 	for (int i=0; i<6; i++) {
 		read_reg(ctx, i, &a.arg[i]);
+		if (param && param->is_pointer[i]) {
+			bpf_probe_read_kernel(&cont.bytes, sizeof(cont.bytes), (void *)a.arg[i]);
+			bpf_ringbuf_output(&contentbuf, &cont, sizeof(cont), 0);
+		}
 	}
 	bpf_ringbuf_output(&argsbuf, &a, sizeof(a), 0);
 	return 0;
@@ -254,4 +285,5 @@ int off_bpf_helper(struct pt_regs *ctx)
  * 2. support fetch pointer, deref for once, show hex.
  * 3. struct cast for pointer content?
  * 4. user specific length
+ * 5. clean up: ispointer array, paralel problem
  */
