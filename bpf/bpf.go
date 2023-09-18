@@ -60,6 +60,9 @@ func (b *Bpf) setMapsKV() (err error) {
 		}
 		isPtr := [6]bool{}
 		for idx, param := range proto.Params {
+			if idx >= 6 {
+				break
+			}
 			switch param.Name {
 			case "skb", "map", "key", "value":
 				isPtr[idx] = true

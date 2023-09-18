@@ -17,7 +17,8 @@ import (
 )
 
 var (
-	targetID int
+	targetID     int
+	derefPointer bool
 )
 
 func init() {
@@ -31,6 +32,7 @@ func main() {
 	defer stop()
 
 	flag.IntVar(&targetID, "prog-id", -1, "(required) only support tc-bpf program for now")
+	flag.BoolVar(&derefPointer, "deref-pointer", false, "(optional) dereference pointer arguments")
 	flag.Parse()
 	if targetID == -1 {
 		flag.PrintDefaults()

@@ -65,7 +65,7 @@ func printf(targetSymbol string, event bpf.Event) {
 		for idx, content := range event.Contents {
 			if ptr[idx] {
 				out := kernel.BTFFormatBytes(fname, idx, content.Bytes[:])
-				if out != "" {
+				if out != "" && derefPointer {
 					fmt.Printf("%s\n", out)
 				}
 			}
