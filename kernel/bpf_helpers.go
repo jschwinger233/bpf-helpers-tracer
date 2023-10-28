@@ -64,10 +64,12 @@ func GetHelpersFromBpfPrograms(ctx context.Context) (helpers []string, err error
 			d, err := exec.Command("bpftool", "-j", "p", "d", "j", "i", strconv.Itoa(prog.Id), "opcode").Output()
 			if err != nil {
 				log.Println(err)
+				return
 			}
 			pd := []ProgDetail{}
 			if err := json.Unmarshal(d, &pd); err != nil {
-				log.Println(err)
+				log.Printf("Unmarshal %s failed: %s", string(d), err)
+				return
 			}
 			base := Kaddr(pd[0].Name)
 			for _, ins := range pd[0].Insns {
